@@ -1,7 +1,11 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 using Febucci.UI;
+using System;
+using Random = UnityEngine.Random;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -12,20 +16,17 @@ public class GameManager : MonoBehaviour
     [SerializeField] private Difficulty _difficulty;
     [Space]
     [SerializeField] private Transform _sudokuObject;
-    [SerializeField] private Transform _debugSudokuObject;
+    [SerializeField] private bool _showDebugValues;
     [SerializeField] private GameObject _numberChoicePanel;
     [SerializeField] private GameObject _genInteractionBlocker;
     [SerializeField] private GameObject _choiceInteractionBlocker;
     [SerializeField] private GameObject _gameWonPanel;
 
-    private TextAnimator[,] _cells;
-    private TextAnimator[,] _debugCells;
-    private int[,] _completeValueGrid = new int[9,9];
-    private int[,] _initialValueGrid = new int[9, 9];
-    private int[,] _currentValueGrid = new int[9, 9];
+    private Cell[,] _cells;
     private IEnumerator _ongoingGeneration;
-    private Vector2Int _selectedCell = new Vector2Int(-1,-1);
+    private Vector2Int _selectedCell = new Vector2Int(-1, -1);
     private int _newChosenNumber = -1;
+    private Stack<Cell> setCellsStack = new Stack<Cell>();
 
     private enum Difficulty
     {
@@ -64,7 +65,6 @@ public class GameManager : MonoBehaviour
         _choiceInteractionBlocker.SetActive(false);
         _numberChoicePanel.SetActive(false);
         GetCellReferences();
-        GetDebugCellReferences();
         SetCellButtonClickFunctions();
 
         GenerateNewSudoku();
@@ -72,52 +72,35 @@ public class GameManager : MonoBehaviour
 
     private void GetCellReferences()
     {
-        TextAnimator[] taa = _sudokuObject.GetComponentsInChildren<TextAnimator>();
-        _cells = new TextAnimator[,]
+        List<Cell> cells = new List<Cell>();
+        foreach (Transform cell in _sudokuObject.Find("Cells").transform)
         {
-            { taa[0], taa[1], taa[2], taa[3], taa[4], taa[5], taa[6], taa[7], taa[8] },
-            { taa[9], taa[10], taa[11], taa[12], taa[13], taa[14], taa[15], taa[16], taa[17] },
-            { taa[18], taa[19], taa[20], taa[21], taa[22], taa[23], taa[24], taa[25], taa[26] },
-            { taa[27], taa[28], taa[29], taa[30], taa[31], taa[32], taa[33], taa[34], taa[35] },
-            { taa[36], taa[37], taa[38], taa[39], taa[40], taa[41], taa[42], taa[43], taa[44] },
-            { taa[45], taa[46], taa[47], taa[48], taa[49], taa[50], taa[51], taa[52], taa[53] },
-            { taa[54], taa[55], taa[56], taa[57], taa[58], taa[59], taa[60], taa[61], taa[62] },
-            { taa[63], taa[64], taa[65], taa[66], taa[67], taa[68], taa[69], taa[70], taa[71] },
-            { taa[72], taa[73], taa[74], taa[75], taa[76], taa[77], taa[78], taa[79], taa[80] }
-        };
-    }
-
-    private void GetDebugCellReferences()
-    {
-        if (_debugSudokuObject)
-        {
-            TextAnimator[] taa = _debugSudokuObject.GetComponentsInChildren<TextAnimator>();
-            _debugCells = new TextAnimator[,]
-            {
-            { taa[0], taa[1], taa[2], taa[3], taa[4], taa[5], taa[6], taa[7], taa[8] },
-            { taa[9], taa[10], taa[11], taa[12], taa[13], taa[14], taa[15], taa[16], taa[17] },
-            { taa[18], taa[19], taa[20], taa[21], taa[22], taa[23], taa[24], taa[25], taa[26] },
-            { taa[27], taa[28], taa[29], taa[30], taa[31], taa[32], taa[33], taa[34], taa[35] },
-            { taa[36], taa[37], taa[38], taa[39], taa[40], taa[41], taa[42], taa[43], taa[44] },
-            { taa[45], taa[46], taa[47], taa[48], taa[49], taa[50], taa[51], taa[52], taa[53] },
-            { taa[54], taa[55], taa[56], taa[57], taa[58], taa[59], taa[60], taa[61], taa[62] },
-            { taa[63], taa[64], taa[65], taa[66], taa[67], taa[68], taa[69], taa[70], taa[71] },
-            { taa[72], taa[73], taa[74], taa[75], taa[76], taa[77], taa[78], taa[79], taa[80] }
-            };
+            cells.Add(new Cell(
+                new Vector2Int(cells.Count % 9, (int)cells.Count / 9),
+                cell.Find("Cell Number").GetComponent<TextAnimator>(),
+                cell.Find("Debug Number").GetComponent<TextMeshProUGUI>(),
+                cell.Find("Debug Number Possibilities").GetComponent<TextMeshProUGUI>()
+            ));
         }
+
+        _cells = new Cell[,]
+        {
+            { cells[0], cells[9], cells[18], cells[27], cells[36], cells[45], cells[54], cells[63], cells[72] },
+            { cells[1], cells[10], cells[19], cells[28], cells[37], cells[46], cells[55], cells[64], cells[73] },
+            { cells[2], cells[11], cells[20], cells[29], cells[38], cells[47], cells[56], cells[65], cells[74] },
+            { cells[3], cells[12], cells[21], cells[30], cells[39], cells[48], cells[57], cells[66], cells[75] },
+            { cells[4], cells[13], cells[22], cells[31], cells[40], cells[49], cells[58], cells[67], cells[76] },
+            { cells[5], cells[14], cells[23], cells[32], cells[41], cells[50], cells[59], cells[68], cells[77] },
+            { cells[6], cells[15], cells[24], cells[33], cells[42], cells[51], cells[60], cells[69], cells[78] },
+            { cells[7], cells[16], cells[25], cells[34], cells[43], cells[52], cells[61], cells[70], cells[79] },
+            { cells[8], cells[17], cells[26], cells[35], cells[44], cells[53], cells[62], cells[71], cells[80] }
+        };
     }
 
     private void SetCellButtonClickFunctions()
     {
-        for (int x = 0; x < 9; x++)
-        {
-            for (int y = 0; y < 9; y++)
-            {
-                Vector2Int xy = new Vector2Int(x, y);
-                Button b = _cells[xy.x, xy.y].transform.parent.GetComponent<Button>();
-                b.onClick.AddListener(() => CellClicked(new Vector2Int(xy.x, xy.y)));
-            }
-        }
+        foreach (Cell cell in _cells)
+            cell.Button.onClick.AddListener(() => CellClicked(cell.ID));
 
         Button[] choiceButtons = _numberChoicePanel.transform.Find("Number Buttons").GetComponentsInChildren<Button>();
         for (int id = 0; id < 9; id++)
@@ -135,11 +118,12 @@ public class GameManager : MonoBehaviour
     {
         if (_ongoingGeneration != null)
             StopCoroutine(_ongoingGeneration);
-        _ongoingGeneration = PopulateCellsWithValues(CalculateCellValues());
-        StartCoroutine(_ongoingGeneration);
+        CalculateCellValues();
+        //_ongoingGeneration = PopulateCellsWithValues();
+        //StartCoroutine(_ongoingGeneration);
     }
 
-    [ContextMenu("Reset")]
+    [ContextMenu("Reset"), Obsolete]
     public void ResetExistingSudoku()
     {
         _numberChoicePanel.SetActive(false);
@@ -147,94 +131,246 @@ public class GameManager : MonoBehaviour
         _choiceInteractionBlocker.SetActive(false);
         _gameWonPanel.SetActive(false);
 
-        _currentValueGrid = (int[,])_initialValueGrid.Clone();
-
         for (int x = 0; x < 9; x++)
-        {
             for (int y = 0; y < 9; y++)
-                _cells[x, y].GetComponentInParent<Button>().interactable = true;
-        }
+                _cells[x, y].Button.interactable = true;
 
         if (_ongoingGeneration != null)
             StopCoroutine(_ongoingGeneration);
-        _ongoingGeneration = PopulateCellsWithValues(_currentValueGrid);
+        _ongoingGeneration = PopulateCellsWithValues();
         StartCoroutine(_ongoingGeneration);
     }
     #endregion
 
-    #region Calculate values
-    private int[,] CalculateCellValues()
+    #region Create Sudoku
+    private void CalculateCellValues()
     {
-        _completeValueGrid = new int[9,9];
-        // Generate default sudoku
-        //for (int x = 0; x < 9; x++)
-        //{
-        //    for (int y = 0; y < 9; y++)
-        //        _completeValueGrid[x, y] = ((x * 3 + x / 3 + y) % 9 + 1);
-        //}
-
-        // Generate real sudoku
         GenerateRealSudoku();
 
-        _initialValueGrid = (int[,])_completeValueGrid.Clone();
+        // Hide most cell values from player
         for (int x = 0; x < 9; x++)
-        {
             for (int y = 0; y < 9; y++)
-            {
-                if (Random.Range(1, 11) > _difficultyValue)
-                    _initialValueGrid[x, y] = -1;
-            }
-        }
-
-        _currentValueGrid = (int[,])_initialValueGrid.Clone();
-        return _initialValueGrid;
+                if (Random.Range(1, 11) <= _difficultyValue)
+                    _cells[x, y].ShownValue = _cells[x, y].RealValue.ToString();
     }
 
     private void GenerateRealSudoku()
     {
-        // 1. Assign all cells the POTENTIAL values of 1-9
+        // 1. Assign all cells the POSSIBLE VALUES of 1-9.
+        // 2. Randomly choose cell to SET THE VALUE of.
+        // 3. Set the value of that cell to a RANDOM VALUE WITHIN POSSIBLE VALUES (1-9).
+        //      3a. If there are possible values, randomly choose one and set.
+        //      3b. If there are no possible values but there are unset cells, backtrack
+        //          and set previous cell to a different value and try again.
+        // 4. UPDATE CELLS in same row/column/square by removing Step-2 cell's value from possibilities.
+        // 5. Randomly choose one of the UPDATED cells as the next to set.
+        // 6. REPEAT steps 2-4 until all cells filled or no options available.
 
-        // 2. Randomly choose first cell to set
-        Vector2Int randomStartingCell = new Vector2Int(Random.Range(0, 9), Random.Range(0, 9));
-        int randomStartingValue = Random.Range(0, 9);
-        _completeValueGrid[randomStartingCell.x, randomStartingCell.y] = randomStartingValue;
 
-        // 3. Update cells in same row/column/square by removing 1st cell value
+        setCellsStack.Clear();
 
-        // 4. Randomly choose one of the updated cells as the next to set
+        foreach (Cell cell in _cells)
+        {
+            cell.Reset();
+            cell.PossibleValues = new List<int> { 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        }
 
-        // 5. Repeat steps 2-4 until all cells filled or no options available
-        // If no options are available, undo previous cell set and try again. Repeat until all filled
+        while (setCellsStack.Count < 81)
+        {
+            Cell cellToSet;
+
+            if (setCellsStack.Count == 0)
+                ChooseRandomStartingCell(out cellToSet);
+            else
+                ChooseRandomUnsetCellOnSameRowOrColumn(out cellToSet);
+
+            ChooseRandomValueFromPotentialValues(cellToSet, out cellToSet, out int randomCellValue);
+            SetRealCellValue(cellToSet, randomCellValue);
+
+            // DEBUG
+            cellToSet.SetUIText($"<color=orange>{cellToSet.RealValue}</color>");
+            cellToSet.SetDebugUIText($"{setCellsStack.Count}");
+
+            UpdateCellsInSameRowAndColumn(cellToSet);
+            Debug.Log("cells set of 81");
+        }
+
+        // DEBUG
+        foreach (Cell cell in _cells)
+            cell.SetDebugPossibilitiesUIText($"{cell.PossibleValuesString}");
     }
 
-    private bool IsAlreadyInHorizontalLine(Vector2Int cellIndex, int[,] potentialGrid, int potentialValue)
+    private void ChooseRandomStartingCell(out Cell cellToSet) => cellToSet = _cells[Random.Range(0, 9), Random.Range(0, 9)];
+
+    private void ChooseRandomUnsetCellOnSameRowOrColumn(out Cell cellToSet)
+    {
+        int randX, randY;
+        bool backtrackNeeded;
+
+        if (Random.Range(0, 2) == 0)
+            FindUnsetCellOnColumn(false, out randX, out randY, out backtrackNeeded);
+        else
+            FindUnsetCellOnRow(false, out randX, out randY, out backtrackNeeded);
+
+        if (backtrackNeeded)
+        {
+            if (setCellsStack.Count > 0)
+            {
+                Debug.Log($"{setCellsStack.Count}: Deadend cell search on lines {randX},{randY}. Backtracking...");
+                setCellsStack.Pop();
+                ChooseRandomUnsetCellOnSameRowOrColumn(out cellToSet);
+            }
+            else
+            {
+                Debug.LogError("BIG ERROR: Backtracked until beginning (stack empty)!");
+                cellToSet = null;
+                #if UNITY_EDITOR
+                EditorApplication.isPlaying = false;
+                #else
+                Application.Quit();
+                #endif
+            }
+        }
+        else
+            cellToSet = _cells[randX, randY];
+    }
+
+    private void FindUnsetCellOnRow(bool passedThrough, out int X, out int Y, out bool backtrackNeeded)
+    {
+        X = setCellsStack.Peek().ID.x;
+        for (Y = 0; Y < 9; Y++)
+        {
+            if (!setCellsStack.Contains(_cells[X, Y]))
+            {
+                backtrackNeeded = false;
+                return;
+            }
+        }
+
+        if (!passedThrough)
+            FindUnsetCellOnColumn(true, out X, out Y, out backtrackNeeded);
+        else
+        {
+            X = -1;
+            Y = -1;
+            backtrackNeeded = true;
+        }
+    }
+
+    private void FindUnsetCellOnColumn(bool passedThrough, out int X, out int Y, out bool backtrackNeeded)
+    {
+        Y = setCellsStack.Peek().ID.y;
+        for (X = 0; X < 9; X++)
+        {
+            if (!setCellsStack.Contains(_cells[X, Y]))
+            {
+                backtrackNeeded = false;
+                return;
+            }
+        }
+
+        if (!passedThrough)
+            FindUnsetCellOnRow(true, out X, out Y, out backtrackNeeded);
+        else
+        {
+            X = -1;
+            Y = -1;
+            backtrackNeeded = true;
+        }
+    }
+
+    private void ChooseRandomValueFromPotentialValues(Cell cellToSet, out Cell cellToSetBacktracked, out int randomCellValue)
+    {
+        cellToSetBacktracked = cellToSet;
+        randomCellValue = 0;
+
+        if (cellToSet.PossibleValues.Count > 0)
+            randomCellValue = cellToSet.PossibleValues[Random.Range(0, cellToSet.PossibleValues.Count)];
+        else
+        {
+            // DEBUG
+            //randomCellValue = 9;
+
+            if (setCellsStack.Count > 0)
+            {
+                Debug.Log($"{setCellsStack.Count}: No possible values for cell {cellToSet.ID} " +
+                    $"(prev: {setCellsStack.Peek().ID}). Backtracking...");
+                cellToSet = setCellsStack.Pop();
+                cellToSet.PossibleValues.Remove(cellToSet.RealValue);
+                ChooseRandomValueFromPotentialValues(cellToSet, out cellToSetBacktracked, out randomCellValue);
+            }
+            else
+            {
+                Debug.LogError("BIG ERROR: Backtracked until beginning (stack empty)!");
+                #if UNITY_EDITOR
+                EditorApplication.isPlaying = false;
+                #else
+                Application.Quit();
+                #endif
+            }
+        }
+    }
+
+    private void SetRealCellValue(Cell cell, int value)
+    {
+        cell.RealValue = value;
+        setCellsStack.Push(cell);
+    }
+
+    private void UpdateCellsInSameRowAndColumn(Cell cell)
+    {
+        for (int x = 0; x < 9; x++)
+            if (x != cell.ID.x)
+                _cells[x, cell.ID.y].PossibleValues.Remove(cell.RealValue);
+
+        for (int y = 0; y < 9; y++)
+            if (y != cell.ID.y)
+                _cells[cell.ID.x, y].PossibleValues.Remove(cell.RealValue);
+    }
+    #endregion
+
+    #region Validity Checks
+    private bool IsAlreadyInHorizontalLine(Cell cell)
     {
         for (int x = 0; x < 9; x++)
         {
-            if (x != cellIndex.x && potentialValue != -1 && potentialGrid[x, cellIndex.y] == potentialValue)
-            {
-                Debug.Log(potentialGrid[x, cellIndex.y] + " = " + potentialValue);
+            Cell cell2 = _cells[x, cell.ID.y];
+            if (x != cell.ID.x && cell2.ShownValue != "" && cell.ShownValue == cell2.ShownValue)
                 return true;
-            }
         }
         return false;
     }
 
-    private bool IsAlreadyInVerticalLine(Vector2Int cellIndex, int[,] potentialGrid, int potentialValue)
+    private bool IsAlreadyInVerticalLine(Cell cell)
     {
         for (int y = 0; y < 9; y++)
         {
-            if (y != cellIndex.y && potentialValue != -1 && potentialGrid[cellIndex.x, y] == potentialValue)
-            {
-                Debug.Log(potentialGrid[cellIndex.x, y] + " = " + potentialValue);
+            Cell cell2 = _cells[cell.ID.x, y];
+            if (y != cell.ID.y && cell2.ShownValue != "" && cell.ShownValue == cell2.ShownValue)
                 return true;
-            }
         }
         return false;
     }
 
-    private bool IsAlreadyInSquare(Vector2Int cellIndex, int[,] potentialGrid, int potentialValue)
+    private bool IsAlreadyInSquare(Cell cell)
     {
+        Cell[] cellBlock = {
+            _cells[0 + (cell.ID.x / 3 * 3), 0 + (cell.ID.y / 3 * 3)],
+            _cells[1 + (cell.ID.x / 3 * 3), 0 + (cell.ID.y / 3 * 3)],
+            _cells[2 + (cell.ID.x / 3 * 3), 0 + (cell.ID.y / 3 * 3)],
+            _cells[0 + (cell.ID.x / 3 * 3), 1 + (cell.ID.y / 3 * 3)],
+            _cells[1 + (cell.ID.x / 3 * 3), 1 + (cell.ID.y / 3 * 3)],
+            _cells[2 + (cell.ID.x / 3 * 3), 1 + (cell.ID.y / 3 * 3)],
+            _cells[0 + (cell.ID.x / 3 * 3), 2 + (cell.ID.y / 3 * 3)],
+            _cells[1 + (cell.ID.x / 3 * 3), 2 + (cell.ID.y / 3 * 3)],
+            _cells[2 + (cell.ID.x / 3 * 3), 2 + (cell.ID.y / 3 * 3)]
+        };
+
+        foreach (Cell neighbour in cellBlock)
+            if (neighbour.ID != cell.ID)
+                if (neighbour.RealValue == cell.RealValue)
+                    return true;
+
         return false;
     }
 
@@ -244,9 +380,8 @@ public class GameManager : MonoBehaviour
         {
             for (int y = 0; y < 9; y++)
             {
-                if (IsAlreadyInHorizontalLine(new Vector2Int(x, y), _completeValueGrid, _completeValueGrid[x, y]) ||
-                    IsAlreadyInVerticalLine(new Vector2Int(x, y), _completeValueGrid, _completeValueGrid[x, y]) ||
-                    IsAlreadyInSquare(new Vector2Int(x, y), _completeValueGrid, _completeValueGrid[x, y]))
+                Cell cell = _cells[x, y];
+                if (IsAlreadyInHorizontalLine(cell) || IsAlreadyInVerticalLine(cell) || IsAlreadyInSquare(cell))
                 {
                     Debug.LogError("Invalid sudoku!");
                     return;
@@ -258,33 +393,32 @@ public class GameManager : MonoBehaviour
     #endregion
 
     #region Display Sudoku
-    private IEnumerator PopulateCellsWithValues(int[,] gridValues)
+    private IEnumerator PopulateCellsWithValues()
     {
         _genInteractionBlocker.SetActive(true);
+        Debug.Log("Populate");
 
-        if (gridValues.Length != _cells.Length)
-            Debug.LogError($"Length Mismatch: Cell Count ({_cells.Length}) != Value Count ({gridValues.Length})");
-        else
+        
+        for (int x = 0; x < 9; x++)
+            for (int y = 0; y < 9; y++)
+                _cells[x, y].Reset();
+
+        for (int x = 0; x < 9; x++)
         {
-            for (int x = 0; x < 9; x++)
+            for (int y = 0; y < 9; y++)
             {
-                for (int y = 0; y < 9; y++)
-                    _cells[x, y].SetText("?", false);
-            }
-
-            for (int x = 0; x < 9; x++)
-            {
-                for (int y = 0; y < 9; y++)
+                Cell cell = _cells[x, y];
+                cell.Button.interactable = !cell.Visible;
+                cell.SetUIText(cell.ShownValue);
+                if (_showDebugValues)
                 {
-                    _cells[x, y].GetComponentInParent<Button>().interactable = gridValues[x, y] == -1;
-                    _cells[x, y].SetText(gridValues[x, y] != -1 ? gridValues[x,y].ToString() : "", false);
-                    if (_debugSudokuObject)
-                        _debugCells[x, y].SetText(_completeValueGrid[x,y].ToString(), false);
-                    yield return new WaitForSecondsRealtime(_displayDelay);
+                    cell.DebugText.SetText(cell.RealValue.ToString(), false);
+                    cell.DebugPossibilitiesText.SetText(cell.PossibleValuesString);
                 }
+                yield return new WaitForSecondsRealtime(_displayDelay);
             }
-            IsExistingSudokuValid();
         }
+        IsExistingSudokuValid();
 
         _genInteractionBlocker.SetActive(false);
     }
@@ -302,8 +436,7 @@ public class GameManager : MonoBehaviour
     {
         if (_selectedCell.x > -1 && _newChosenNumber > 0)
         {
-            _currentValueGrid[_selectedCell.x, _selectedCell.y] = _newChosenNumber;
-            _cells[_selectedCell.x, _selectedCell.y].SetText(_newChosenNumber.ToString(), false);
+            _cells[_selectedCell.x, _selectedCell.y].SetUIText(_newChosenNumber.ToString());
             _choiceInteractionBlocker.SetActive(false);
             _numberChoicePanel.SetActive(false);
             _newChosenNumber = -1;
@@ -313,7 +446,7 @@ public class GameManager : MonoBehaviour
     }
     #endregion
 
-    #region Grid Checks
+    #region Win/Lose Validity Checks
     private void CheckIfHasWonGame()
     {
         _gameWonPanel.SetActive(
@@ -323,23 +456,21 @@ public class GameManager : MonoBehaviour
 
     private bool CheckForIdenticalValidSolution()
     {
-        bool _isIdentical = true;
         for (int x = 0; x < 9; x++)
         {
             for (int y = 0; y < 9; y++)
             {
-                int comp = _completeValueGrid[x, y];
-                int curr = _currentValueGrid[x, y];
-                if (comp != curr || curr == -1)
-                    _isIdentical = false;
+                if (!_cells[x, y].Correct)
+                    return false;
             }
         }
 
-        return _isIdentical;
+        return true;
     }
 
     private bool CheckForDifferentValidSolution()
     {
+        // TODO
         return false;
     }
     #endregion
